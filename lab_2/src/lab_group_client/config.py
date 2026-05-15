@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ipv8.configuration import ConfigBuilder, Strategy, WalkerDefinition, default_bootstrap_defs
+
+
+DEFAULT_COMMUNITY_ID_HEX = "4c61623247726f75705369676e696e6732303236"
+DEFAULT_SERVER_PUBLIC_KEY_HEX = (
+    "4c69624e61434c504b3a82e33614a342774e084af80835838d6dbdb64a537d3ddb6c1d82011a7f101553cda40cf5fa0e"
+    "0fc23abd0a9c4f81322282c5b34566f6b8401f5f683031e60c96"
+)
+DEFAULT_DISCOVERY_TIMEOUT_SECONDS = 60.0
+DEFAULT_DISCOVERY_POLL_INTERVAL_SECONDS = 2.0
+DEFAULT_RANDOM_WALK_TARGET_PEERS = 20
+DEFAULT_RANDOM_WALK_TIMEOUT_SECONDS = 3.0
+
+
+@dataclass(frozen=True)
+class LabClientConfig:
+    private_key_file: Path
+    member_public_keys: tuple[bytes, bytes, bytes]
+    session_cache_file: Path = Path(".lab_session.json")
+    group_id: str = ""
+    listen_host: str = "0.0.0.0"
+    listen_port: int = 8091
+    community_id: bytes = bytes.fromhex(DEFAULT_COMMUNITY_ID_HEX)
+    server_public_key: bytes = bytes.fromhex(DEFAULT_SERVER_PUBLIC_KEY_HEX)
+    discovery_timeout: float = DEFAULT_DISCOVERY_TIMEOUT_SECONDS
+    discovery_poll_interval: float = DEFAULT_DISCOVERY_POLL_INTERVAL_SECONDS
+    random_walk_target_peers: int = DEFAULT_RANDOM_WALK_TARGET_PEERS
+    random_walk_timeout: float = DEFAULT_RANDOM_WALK_TIMEOUT_SECONDS
+    registration_timeout: float = 5.0
+    challenge_timeout: float = 5.0
+    bundle_result_timeout: float = 5.0
+    nonce_to_sign_timeout: float = 5.0
+    signature_share_timeout: float = 5.0
+    next_challenge_retry_delay: float = 0.05
+    nonce_resend_interval: float = 0.25
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> LabClientConfig:
+        config_path = Path(path)
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+
+        try:
+            # JSON stores keys as hex strings; IPv8 expects raw bytes on the wire.
+            members = tuple(bytes.fromhex(key) for key in raw["member_public_keys"])
+        except KeyError as exc:
+            raise ValueError("Config must define member_public_keys with exactly 3 hex-encoded public keys") from exc
+
+        # These checks mirror server-side rejections and fail earlier with clearer local errors.
+        if len(members) != 3:
+            raise ValueError("member_public_keys must contain exactly 3 public keys")
+        if len(set(members)) != 3:
+            raise ValueError("member_public_keys contains duplicate public keys")
+
+        private_key_file = Path(raw["private_key_file"])
+        if not private_key_file.is_absolute():
+            private_key_file = config_path.parent / private_key_file
+        if not private_key_file.is_file():
+            raise ValueError(f"private_key_file does not exist: {private_key_file}")
+
+        session_cache_file = Path(raw.get("session_cache_file", ".lab_session.json"))
+        if not session_cache_file.is_absolute():
+            session_cache_file = config_path.parent / session_cache_file
+
+        return cls(
+            private_key_file=private_key_file,
+            member_public_keys=members,  # type: ignore[arg-type]
+            session_cache_file=session_cache_file,
+            group_id=raw.get("group_id", ""),
+            listen_host=raw.get("listen_host", "0.0.0.0"),
+            listen_port=int(raw.get("listen_port", 8091)),
+            community_id=bytes.fromhex(raw.get("community_id", DEFAULT_COMMUNITY_ID_HEX)),
+            server_public_key=bytes.fromhex(raw.get("server_public_key", DEFAULT_SERVER_PUBLIC_KEY_HEX)),
+            discovery_timeout=float(raw.get("discovery_timeout", DEFAULT_DISCOVERY_TIMEOUT_SECONDS)),
+            discovery_poll_interval=float(
+                raw.get("discovery_poll_interval", DEFAULT_DISCOVERY_POLL_INTERVAL_SECONDS)
+            ),
+            random_walk_target_peers=int(raw.get("random_walk_target_peers", DEFAULT_RANDOM_WALK_TARGET_PEERS)),
+            random_walk_timeout=float(raw.get("random_walk_timeout", DEFAULT_RANDOM_WALK_TIMEOUT_SECONDS)),
+            registration_timeout=float(raw.get("registration_timeout", 5.0)),
+            challenge_timeout=float(raw.get("challenge_timeout", 5.0)),
+            bundle_result_timeout=float(raw.get("bundle_result_timeout", 5.0)),
+            nonce_to_sign_timeout=float(raw.get("nonce_to_sign_timeout", 5.0)),
+            signature_share_timeout=float(raw.get("signature_share_timeout", 5.0)),
+            next_challenge_retry_delay=float(raw.get("next_challenge_retry_delay", 0.05)),
+            nonce_resend_interval=float(raw.get("nonce_resend_interval", 0.25)),
+        )
+
+
+def ipv8_configuration(config: LabClientConfig) -> dict[str, Any]:
+    # This starts our custom community with standard IPv8 peer discovery enabled.
+    builder = ConfigBuilder().clear_keys().clear_overlays()
+    builder.set_address(config.listen_host)
+    builder.set_port(config.listen_port)
+    builder.set_walker_interval(0.5)
+    # Config loading requires this file to exist; no keys are generated by this client.
+    builder.add_key("lab-member", "curve25519", str(config.private_key_file))
+    builder.add_overlay(
+        "LabGroupSigningCommunity",
+        "lab-member",
+        [
+            WalkerDefinition(
+                Strategy.RandomWalk,
+                config.random_walk_target_peers,
+                {"timeout": config.random_walk_timeout},
+            )
+        ],
+        default_bootstrap_defs,
+        # Passed through to settings.community_id before the community is constructed.
+        {
+            "community_id": config.community_id,
+            "member_public_keys": config.member_public_keys,
+        },
+        [],
+    )
+    return builder.finalize()

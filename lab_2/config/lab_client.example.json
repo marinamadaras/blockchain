@@ -1,0 +1,25 @@
+{
+  "private_key_file": "../keys/member1_private.pem",
+  "session_cache_file": ".lab_session.json",
+  "group_id": "replace-with-registered-group-id",
+  "listen_host": "0.0.0.0",
+  "listen_port": 8091,
+  "discovery_timeout": 60.0,
+  "discovery_poll_interval": 2.0,
+  "random_walk_target_peers": 20,
+  "random_walk_timeout": 3.0,
+  "registration_timeout": 5.0,
+  "challenge_timeout": 5.0,
+  "bundle_result_timeout": 5.0,
+  "nonce_to_sign_timeout": 5.0,
+  "signature_share_timeout": 5.0,
+  "next_challenge_retry_delay": 0.05,
+  "nonce_resend_interval": 0.25,
+  "member_public_keys": [
+    "replace-with-member-1-public-key-hex",
+    "replace-with-member-2-public-key-hex",
+    "replace-with-member-3-public-key-hex"
+  ],
+  "community_id": "4c61623247726f75705369676e696e6732303236",
+  "server_public_key": "4c69624e61434c504b3a82e33614a342774e084af80835838d6dbdb64a537d3ddb6c1d82011a7f101553cda40cf5fa0e0fc23abd0a9c4f81322282c5b34566f6b8401f5f683031e60c96"
+}
