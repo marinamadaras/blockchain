@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blockchain-engineering-project"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pyipv8",
+]
+
+[project.scripts]
+register-lab-group = "lab_group_client.register_group:main"
+prepare-lab-session = "lab_group_client.prepare_session:main"
+discover-lab-members = "lab_group_client.discover_members:main"
+test-cache-messages = "lab_group_client.cache_message_test:main"
+run-lab-rounds = "lab_group_client.run_rounds:main"
+lab-key = "lab_group_client.keys:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
